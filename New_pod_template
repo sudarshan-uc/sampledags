@@ -1,0 +1,114 @@
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dummy-name
+  labels:
+    workspace: cl1xr1qzd3231146mkj0glm4b4d
+spec:
+  containers:
+    - args: []
+      command: []
+      envFrom:
+        - secretRef:
+            name: ${RELEASE_NAME}-env
+      env:
+        - name: DD_AGENT_HOST
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+        - name: DD_ENV
+          value: '$(DEPLOYMENT_ENV)'
+        - name: DD_TRACE_AGENT_URL
+          value: 'http://$(DD_AGENT_HOST):8126'
+        - name: DD_SERVICE
+          value: 'vamp-measurement'
+        - name: DD_DOGSTATSD_SOCKET
+          value: '/var/run/datadog/dsd.socket'
+        - name: AIRFLOW__CORE__EXECUTOR
+          value: LocalExecutor
+        # Hard Coded Airflow Envs
+        - name: ASTRONOMER__AIRFLOW__WORKER_LOG_RETENTION_DAYS
+          value: '3'
+        - name: COMPONENT # Checked by entrypoint when sidecar logging is enabled
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['component']
+        - name: AIRFLOW__CORE__FERNET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: ${RELEASE_NAME}-fernet-key
+              key: fernet-key
+        # For Airflow <2.3, backward compatibility; moved to [database] in 2.3
+        - name: AIRFLOW__CORE__SQL_ALCHEMY_CONN
+          valueFrom:
+            secretKeyRef:
+              name: ${RELEASE_NAME}-airflow-metadata
+              key: connection
+        - name: AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
+          valueFrom:
+            secretKeyRef:
+              name: ${RELEASE_NAME}-airflow-metadata
+              key: connection
+        - name: AIRFLOW_CONN_AIRFLOW_DB
+          valueFrom:
+            secretKeyRef:
+              name: ${RELEASE_NAME}-airflow-metadata
+              key: connection
+        - name: AIRFLOW__WEBSERVER__SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: ${RELEASE_NAME}-webserver-secret-key
+              key: webserver-secret-key
+        # The elasticsearch variables were updated to the shorter names in v1.10.4
+        - name: AIRFLOW__ELASTICSEARCH__HOST
+          valueFrom:
+            secretKeyRef:
+              name: ${RELEASE_NAME}-elasticsearch
+              key: connection
+        # This is the older format for these variable names, kept here for backward compatibility
+        - name: AIRFLOW__ELASTICSEARCH__ELASTICSEARCH_HOST
+          valueFrom:
+            secretKeyRef:
+              name: ${RELEASE_NAME}-elasticsearch
+              key: connection
+        # Dynamically created environment variables
+        - name: AIRFLOW__ASTRONOMER__HOUSTON_JWK_URL
+          value: 'https://houston.astro.videoamp.com/v1/.well-known/jwks.json'
+        - name: AIRFLOW__KUBERNETES_ENVIRONMENT_VARIABLES__AIRFLOW__ASTRONOMER__HOUSTON_JWK_URL
+          value: 'https://houston.astro.videoamp.com/v1/.well-known/jwks.json'
+      image: dummy_image
+      imagePullPolicy: IfNotPresent
+      name: base
+      ports: []
+      volumeMounts:
+        - mountPath: '/usr/local/airflow/logs'
+          name: logs
+        - name: config
+          mountPath: '/usr/local/airflow/airflow.cfg'
+          subPath: airflow.cfg
+          readOnly: true
+        - name: config
+          mountPath: '/usr/local/airflow/config/airflow_local_settings.py'
+          subPath: airflow_local_settings.py
+          readOnly: true
+  hostNetwork: false
+  imagePullSecrets:
+    - name: dummy_image
+  restartPolicy: Never
+  securityContext:
+    runAsUser: 50000
+    fsGroup: 50000
+  nodeSelector:
+    {}
+  affinity:
+    {}
+  tolerations:
+    []
+  serviceAccountName: ${RELEASE_NAME}-worker
+  volumes:
+  - emptyDir: {}
+    name: logs
+  - configMap:
+      name: ${RELEASE_NAME}-airflow-config
+    name: config
